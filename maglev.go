@@ -11,7 +11,7 @@ type Hasher interface {
 	Hash(string) uint64
 }
 
-// Maglev contains
+// Maglev is the main object of this package.
 type Maglev struct {
 	permutations  map[string][]uint64
 	lookup        []string
@@ -108,7 +108,9 @@ func (m *Maglev) Contains(node string) bool {
 	return false
 }
 
-// Add adds new nodes to Maglev and returns the number of nodes added.
+// Add adds new nodes to Maglev and returns the number of nodes added. Returns an error
+// if the addition causes number of nodes to exceed number of partitions. It is the responsibility
+// of the user to roll back any changes caused by this (e.g. by calling Remove() to revert the lookup table).
 func (m *Maglev) Add(nodes ...string) (int, error) {
 	n := 0
 	for _, node := range nodes {
@@ -121,10 +123,15 @@ func (m *Maglev) Add(nodes ...string) (int, error) {
 		}
 	}
 	m.populateLookup()
+	if uint64(len(m.nodes)) > m.numPartitions {
+		return n, errors.New("number of nodes exceed number of partitions")
+	}
 	return n, nil
 }
 
-// Remove removes nodes from Maglev and returns the number of nodes removed.
+// Remove removes nodes from Maglev and returns the number of nodes removed. Returns an error
+// if removal causes number of nodes to be zero. In this case, the lookup table is not updated,
+// and it is the user's responsibility to roll back the changes (e.g. by calling Add() to add some nodes back).
 func (m *Maglev) Remove(nodes ...string) (int, error) {
 	n := 0
 	for _, node := range nodes {
@@ -136,6 +143,19 @@ func (m *Maglev) Remove(nodes ...string) (int, error) {
 			n++
 		}
 	}
+	if uint64(len(m.nodes)) == 0 {
+		return n, errors.New("there are no nodes left")
+	}
 	m.populateLookup()
 	return n, nil
+}
+
+// Size returns the number of nodes in Maglev.
+func (m *Maglev) Size() int {
+	return len(m.nodes)
+}
+
+// Partitions returns the number of partitions of Maglev.
+func (m *Maglev) Partitions() uint64 {
+	return m.numPartitions
 }
